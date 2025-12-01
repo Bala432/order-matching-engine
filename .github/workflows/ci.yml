@@ -1,0 +1,33 @@
+
+3. Paste this inside `ci.yml`:
+
+```yaml
+name: OME CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install build tools
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential
+
+    - name: Build project
+      run: |
+        make clean || true
+        make
+
+    - name: Run tests
+      run: |
+        make test
