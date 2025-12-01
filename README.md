@@ -23,18 +23,14 @@ tests/          # GoogleTest unit tests
 googletest/     # Embedded GoogleTest library
 Makefile        # Build system
 ```
-
+---
 ## 🛠 Build Instructions (Windows - MinGW)
 ```bash
 mingw32-make clean
 mingw32-make
-```
-
-🧪 Run All Unit Tests
-```
 mingw32-make test
 ```
-
+---
 ⚙️ Requirements
 - MinGW-w64
 - C++17-compatible compiler (g++)
