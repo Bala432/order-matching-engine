@@ -59,55 +59,61 @@ Generated artifacts (events, traces, snapshots) are **local outputs only** and a
 
 ## Project Structure
 
+```text
 OME/
 ├── src/
-│ ├── Orderbook.cpp
-│ ├── benchmark_main.cpp
-│ └── main.cpp
+│   ├── Orderbook.cpp
+│   ├── benchmark_main.cpp
+│   └── main.cpp
 ├── include/
-│ ├── Orderbook.h
-│ ├── Order.h
-│ ├── OrderType.h
-│ ├── OrderModify.h
-│ ├── LevelInfo.h
-│ ├── OrderbookLevelInfos.h
-│ ├── Side.h
-│ ├── Usings.h
-│ ├── TradeInfo.h
-│ ├── Trade.h
-│ ├── Event.h
-│ ├── Constants.h
-│ └── Benchmark.h
+│   ├── Orderbook.h
+│   ├── Order.h
+│   ├── OrderType.h
+│   ├── OrderModify.h
+│   ├── LevelInfo.h
+│   ├── OrderbookLevelInfos.h
+│   ├── Side.h
+│   ├── Usings.h
+│   ├── TradeInfo.h
+│   ├── Trade.h
+│   ├── Event.h
+│   ├── Constants.h
+│   └── Benchmark.h
 ├── bench/
-│ ├── bench_config.h
-│ └── README.bench.md
+│   ├── bench_config.h
+│   └── README.bench.md
 ├── Makefile
 ├── README.md
 └── .gitignore
-
+```
 ---
 
 ## Build (Windows / MinGW)
 
-```bash
+```
 mingw32-make bench
 ```
 
 This builds the benchmark binary:
+```
 ome_benchmark.exe
-
-Running Correctness Validation
+```
+---
+## Running Correctness Validation
 
 Run the benchmark in correctness mode with event logging enabled:
+```
 ./ome_benchmark.exe --mode=correctness --events
+```
 
 This run:
--> executes predefined correctness scenarios
--> records golden and replay event streams
--> produces final order-book snapshots
--> validates deterministic behavior
+- executes predefined correctness scenarios
+- records golden and replay event streams
+- produces final order-book snapshots
+- validates deterministic behavior
 
-Notes
--> This project intentionally avoids exchange-specific optimizations(kernel bypass, networking, lock-free I/O)
--> The focus is on correct matching semantics and determinism
--> The benchmark harness exists primarily to support correctness claims
+
+## Notes
+- This project intentionally avoids exchange-specific optimizations(kernel bypass, networking, lock-free I/O)
+- The focus is on correct matching semantics and determinism
+- The benchmark harness exists primarily to support correctness claims
