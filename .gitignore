@@ -1,0 +1,17 @@
+# ------------------------------
+# Build artifacts
+# ------------------------------
+*.exe
+
+# ------------------------------
+# Benchmark / correctness outputs
+# ------------------------------
+bench/events/
+bench/snapshots/
+bench/results/
+bench/traces/
+
+# ------------------------------
+# OS / editor noise
+# ------------------------------
+.vscode/
