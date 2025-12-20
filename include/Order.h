@@ -43,14 +43,14 @@ public:
         remainingQuantity_ -= quantity;
     }
 
-    void ToGoodTillCancel(Price price){
+    void ToImmediateOrCancel(Price price){
         if(price <= 0){
             std::ostringstream oss;
             oss << "Order (" << GetOrderId() << ") must be a tradeable price" << std::endl;
             throw std::logic_error(oss.str());
         }
         price_ = price;
-        orderType_ = OrderType::GoodTillCancel;
+        orderType_ = OrderType::ImmediateOrCancel;
     }
 };
 

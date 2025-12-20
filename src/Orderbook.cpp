@@ -123,9 +123,9 @@ void Orderbook::CancelOrder(OrderId orderId)
         ev.seq = event_seq_++;
         ev.order_id = orderId;          // the canceled order id
         ev.order_id2 = 0;
-        ev.price = -1;
-        order->GetRemainingQuantity();  // optional: canceled quantity if tracked
-        ev.side = 255;
+        ev.price = order->GetPrice();
+        ev.qty = order->GetRemainingQuantity();  // optional: canceled quantity if tracked
+        ev.side = (order->GetSide() == Side::Buy) ? 1 : 0;
         EmitEvent(ev);
     }
     UpdateBestPrices();
@@ -232,24 +232,25 @@ Trades Orderbook::AddOrder(OrderPointer order)
     if(orders_.contains(order->GetOrderId()))
         return {};
 
-    if(order->GetOrderType() == OrderType::Market){
-        if(order->GetSide() == Side::Buy && !asks_.empty()){
-            const auto& [worstAsk, _] = *asks_.rbegin();
-            order->ToGoodTillCancel(worstAsk);
-        }
-        else if(order->GetSide() == Side::Sell && !bids_.empty()){
-            const auto& [worstBid, _] = *bids_.rbegin();
-            order->ToGoodTillCancel(worstBid);
-        }
-        else
-            return {};
+    bool isMarket = (order->GetOrderType() == OrderType::Market);
+
+    // MARKET ORDER PATH — match only, never insert
+    if (isMarket) {
+        Price aggressive = (order->GetSide() == Side::Buy)
+            ? std::numeric_limits<Price>::max()
+            : std::numeric_limits<Price>::min();
+
+        // Convert to IOC — ensures remainder auto-canceled in cleanup
+        order->ToImmediateOrCancel(aggressive);
     }
 
-    if(order->GetOrderType() == OrderType::ImmediateOrCancel && !CanMatch(order->GetSide(), order->GetPrice()))
-        return {};
+    if (!isMarket) {
+        if(order->GetOrderType() == OrderType::ImmediateOrCancel && !CanMatch(order->GetSide(), order->GetPrice()))
+            return {};
 
-    if(order->GetOrderType() == OrderType::FillOrKill && !CanFullyFill(order->GetSide(), order->GetPrice(), order->GetInitialQuantity()))
-        return {};
+        if(order->GetOrderType() == OrderType::FillOrKill && !CanFullyFill(order->GetSide(), order->GetPrice(), order->GetInitialQuantity()))
+            return {};
+    }
 
     OrderPointers::iterator iterator;
     auto& orders = (order->GetSide() == Side::Buy) ? bids_[order->GetPrice()] : asks_[order->GetPrice()];
@@ -268,7 +269,7 @@ Trades Orderbook::AddOrder(OrderPointer order)
         ev.order_id = order->GetOrderId();
         ev.order_id2 = 0;
         ev.price = order->GetPrice();
-        ev.qty = order->GetRemainingQuantity() ? order->GetRemainingQuantity() : order->GetInitialQuantity();
+        ev.qty = order->GetInitialQuantity();
         ev.side = (order->GetSide() == Side::Buy) ? 1 : 0;
         EmitEvent(ev);
     }
