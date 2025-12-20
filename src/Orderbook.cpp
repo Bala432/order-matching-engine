@@ -52,32 +52,28 @@ void Orderbook::UpdateBestPrices() {
 
 bool Orderbook::CanFullyFill_Buy(Price price, Quantity quantity) const 
 {   
-    Quantity level_quantity = 0;
+    Quantity available = 0;
     for(auto it = asks_.begin(); it!= asks_.end() && it->first <= price; it++){
         const auto& orders_list = it->second;
         for(const auto& order : orders_list)
-            level_quantity += order->GetRemainingQuantity();
+            available += order->GetRemainingQuantity();
 
-        if(quantity <= level_quantity)
+        if(quantity <= available)
             return true;
-
-        quantity -= level_quantity;
     }
     return false;
 }
 
 bool Orderbook::CanFullyFill_Sell(Price price, Quantity quantity) const 
 {   
-    Quantity level_quantity = 0;
+    Quantity available = 0;
     for(auto it = bids_.begin(); it!= bids_.end() && it->first >= price; it++){
         const auto& orders_list = it->second;
         for(const auto& order : orders_list)
-            level_quantity += order->GetRemainingQuantity();
+            available += order->GetRemainingQuantity();
 
-        if(quantity <= level_quantity)
+        if(quantity <= available)
             return true;
-
-        quantity -= level_quantity;
     }
     return false;
 }
@@ -234,7 +230,6 @@ Trades Orderbook::AddOrder(OrderPointer order)
 
     bool isMarket = (order->GetOrderType() == OrderType::Market);
 
-    // MARKET ORDER PATH — match only, never insert
     if (isMarket) {
         Price aggressive = (order->GetSide() == Side::Buy)
             ? std::numeric_limits<Price>::max()
