@@ -1,47 +1,56 @@
 CXX := g++
-CXXFLAGS := -std=c++20 -O2 -Iinclude \
-            -Igoogletest/googletest/include \
-            -Igoogletest/googlemock/include \
-            -Igoogletest/googletest -pthread -DNDEBUG
 
-# Ultra-aggressive flags only for benchmark
-# Aggressive flags for perf, BUT leave exceptions enabled
-# PERF_FLAGS := -O3 -march=native -funroll-loops -DNDEBUG -pthread
-PERF_FLAGS := -O0 -g -pthread
+# --------------------------------------------------
+# Common flags (shared by all builds)
+# --------------------------------------------------
+COMMON_FLAGS := -std=c++20 -pthread -DNDEBUG -Iinclude -Ibench
 
-# Sources
-SRC := src/Orderbook.cpp         # add more if you have them
-BENCH_SRC := src/benchmark_main.cpp             # exact location
+# --------------------------------------------------
+# Optimization profiles
+# --------------------------------------------------
+RELEASE_FLAGS := -O2
+PERF_FLAGS    := -O3 -march=native
 
-# Outputs
-TEST_OUT     := test_ome.exe
-MAIN_OUT     := ome_main.exe
-BENCH_OUT    := ome_benchmark.exe
+# --------------------------------------------------
+# Source files
+# --------------------------------------------------
+SRC := src/Orderbook.cpp
 
-.PHONY: all test run bench clean
+CORRECTNESS_SRC := src/orderbook_correctness.cpp
+BENCH_SRC       := src/benchmark_main.cpp
 
-all: test
+# --------------------------------------------------
+# Output binaries
+# --------------------------------------------------
+CORRECTNESS_OUT := ob_correctness.exe
+BENCH_OUT       := ome_benchmark.exe
 
-# Tests
-$(TEST_OUT): tests/test_load.cpp $(SRC) googletest/googletest/src/gtest-all.cc
-	$(CXX) $(CXXFLAGS) $^ -o $@
+# --------------------------------------------------
+# Targets
+# --------------------------------------------------
+.PHONY: all correctness bench clean
 
-test: $(TEST_OUT)
-	./$(TEST_OUT) --gtest_color=yes
+all: correctness
 
-# Normal main
-$(MAIN_OUT): src/main.cpp $(SRC)
-	$(CXX) $(CXXFLAGS) $^ -o $@
+# --------------------------------------------------
+# Correctness unit tests (lightweight, assert-based)
+# --------------------------------------------------
+correctness: $(CORRECTNESS_SRC) $(SRC)
+	$(CXX) $(COMMON_FLAGS) $(RELEASE_FLAGS) $^ -o $(CORRECTNESS_OUT)
+	@echo "Built correctness test: $(CORRECTNESS_OUT)"
 
-run: $(MAIN_OUT)
-	./$(MAIN_OUT)
+# --------------------------------------------------
+# Benchmark binary (used for correctness + perf modes)
+# --------------------------------------------------
+bench: $(BENCH_SRC) $(SRC)
+	$(CXX) $(COMMON_FLAGS) $(PERF_FLAGS) $^ -o $(BENCH_OUT)
+	@echo "Built benchmark binary: $(BENCH_OUT)"
+	@echo "Run:"
+	@echo "  ./$(BENCH_OUT) --mode=correctness --events"
+	@echo "  ./$(BENCH_OUT) --mode=perf"
 
-# BENCHMARK — the one that matters
-$(BENCH_OUT): $(BENCH_SRC) $(SRC)
-	$(CXX) $(CXXFLAGS) $(PERF_FLAGS) -Iinclude -Ibench $^ -o $@
-
-bench: $(BENCH_OUT)
-	@echo "Benchmark binary built: $(BENCH_OUT)"
-
+# --------------------------------------------------
+# Cleanup
+# --------------------------------------------------
 clean:
 	-del /Q *.exe 2>nul || rm -f *.exe

@@ -24,6 +24,8 @@ private:
     size_t matchedOrders_ = 0;
     Price bestBid_{0};
     Price bestAsk_{0};
+    
+    Side lastAggressorSide_{ Side::Buy };
 
     bool CanFullyFill(Side side, Price price, Quantity quantity) const;
     bool CanFullyFill_Buy(Price price, Quantity quantity) const;

@@ -3,7 +3,6 @@
 #include "Usings.h"
 #include "OrderType.h"
 #include "Side.h"
-#include "Constants.h"
 #include <sstream>
 #include <memory>
 #include <list>
@@ -20,10 +19,6 @@ private:
 public:
     Order(OrderType orderType, OrderId orderId, Side side, Price price, Quantity quantity) : 
         orderType_{ orderType }, orderId_{ orderId }, side_{ side }, price_{ price }, initialQuantity_{ quantity }, remainingQuantity_{ quantity }
-    {}
-
-    Order(OrderId orderId, Side side, Quantity quantity)
-    : Order(OrderType::Market, orderId, side, Constants::InvalidPrice, quantity)
     {}
 
     OrderType GetOrderType() const { return orderType_; }
@@ -46,7 +41,7 @@ public:
     void ToImmediateOrCancel(Price price){
         if(price <= 0){
             std::ostringstream oss;
-            oss << "Order (" << GetOrderId() << ") must be a tradeable price" << std::endl;
+            oss << "Order (" << GetOrderId() << ") limit price must be > 0" << std::endl;
             throw std::logic_error(oss.str());
         }
         price_ = price;

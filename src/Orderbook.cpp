@@ -161,7 +161,10 @@ Trades Orderbook::MatchOrders(){
             bid->Fill(quantity);
             ask->Fill(quantity);
 
-            Price tradePrice = ask->GetPrice();
+            Price tradePrice = (lastAggressorSide_ == Side::Buy)
+                                ? ask->GetPrice()   // buy aggressor hits ask
+                                : bid->GetPrice();  // sell aggressor hits bid
+
             trades.push_back(Trade{
                             TradeInfo{bid->GetOrderId(), tradePrice, quantity},
                             TradeInfo{ask->GetOrderId(), tradePrice, quantity}});
@@ -228,12 +231,13 @@ Trades Orderbook::AddOrder(OrderPointer order)
     if(orders_.contains(order->GetOrderId()))
         return {};
 
+    lastAggressorSide_ = order->GetSide();
     bool isMarket = (order->GetOrderType() == OrderType::Market);
 
     if (isMarket) {
         Price aggressive = (order->GetSide() == Side::Buy)
             ? std::numeric_limits<Price>::max()
-            : std::numeric_limits<Price>::min();
+            : 1;
 
         // Convert to IOC — ensures remainder auto-canceled in cleanup
         order->ToImmediateOrCancel(aggressive);
