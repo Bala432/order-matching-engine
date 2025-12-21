@@ -11,7 +11,8 @@ This project focuses on **correct matching semantics, determinism, and clean sys
 ### Supported Order Types
 
 - **Good-Till-Cancel (GTC)** — rests in the book until filled or canceled
-- **Market** — executes immediately against available liquidity
+- **Market** — executes immediately by sweeping available opposite-side liquidity
+  (implemented internally via aggressive IOC conversion)
 - **Immediate-Or-Cancel (IOC)** — executes immediately; unfilled quantity is canceled
 - **Fill-Or-Kill (FOK)** — executes only if the entire quantity can be filled immediately
 
@@ -55,6 +56,9 @@ Matching snapshots guarantee:
 
 Generated artifacts (events, traces, snapshots) are **local outputs only** and are **not committed**.
 
+In addition to trace–replay validation, a lightweight assert-based unit test
+harness is provided to validate individual order type semantics in isolation.
+
 ---
 
 ## Project Structure
@@ -64,6 +68,7 @@ OME/
 ├── src/
 │   ├── Orderbook.cpp
 │   ├── benchmark_main.cpp
+│   ├── orderbook_correctness.cpp
 │   └── main.cpp
 ├── include/
 │   ├── Orderbook.h
@@ -77,7 +82,6 @@ OME/
 │   ├── TradeInfo.h
 │   ├── Trade.h
 │   ├── Event.h
-│   ├── Constants.h
 │   └── Benchmark.h
 ├── bench/
 │   ├── bench_config.h
@@ -90,10 +94,14 @@ OME/
 
 ## Build (Windows / MinGW)
 
+### Correctness tests
+```
+mingw32-make correctness
+```
+### Benchmark binary
 ```
 mingw32-make bench
 ```
-
 This builds the benchmark binary:
 ```
 ome_benchmark.exe
@@ -114,6 +122,6 @@ This run:
 
 
 ## Notes
-- This project intentionally avoids exchange-specific optimizations(kernel bypass, networking, lock-free I/O)
+- This project intentionally avoids exchange-specific optimizations (kernel bypass, networking, lock-free I/O)
 - The focus is on correct matching semantics and determinism
 - The benchmark harness exists primarily to support correctness claims
