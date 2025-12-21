@@ -1,6 +1,6 @@
 # Order Matching Engine (C++)
 
-A deterministic **order matching engine** implemented in modern C++, supporting core exchange-style order types and validated using a **trace–replay correctness harness**.
+A deterministic **order matching engine** implemented in modern C++, supporting core exchange-style order types and validated using a **deterministic trace–replay correctness harness**.
 
 This project focuses on **correct matching semantics, determinism, and clean system design**, rather than exchange-specific networking or kernel-bypass optimizations.
 
@@ -59,6 +59,9 @@ Generated artifacts (events, traces, snapshots) are **local outputs only** and a
 In addition to trace–replay validation, a lightweight assert-based unit test
 harness is provided to validate individual order type semantics in isolation.
 
+Detailed benchmark methodology and performance measurements are documented
+in `bench/README.bench.md`.
+
 ---
 
 ## Project Structure
@@ -86,6 +89,9 @@ OME/
 ├── bench/
 │   ├── bench_config.h
 │   └── README.bench.md
+├── analysis/
+│   ├── latency_analysis.py
+│   └── latency_vs_size.png
 ├── Makefile
 ├── README.md
 └── .gitignore
@@ -125,3 +131,4 @@ This run:
 - This project intentionally avoids exchange-specific optimizations (kernel bypass, networking, lock-free I/O)
 - The focus is on correct matching semantics and determinism
 - The benchmark harness exists primarily to support correctness claims
+- Performance benchmarks are provided for baseline analysis and are not presented as exchange-grade latency claims.

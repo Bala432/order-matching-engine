@@ -22,6 +22,47 @@
 // ---------- small helpers ----------
 using namespace std::chrono;
 
+// ---------- latency instrumentation ----------
+#ifndef ENABLE_LATENCY
+#define ENABLE_LATENCY 1
+#endif
+
+using LatClock = std::chrono::steady_clock;
+using LatNS = std::chrono::nanoseconds;
+
+inline uint64_t lat_now_ns() {
+    return std::chrono::duration_cast<LatNS>(
+        LatClock::now().time_since_epoch()
+    ).count();
+}
+
+#if ENABLE_LATENCY
+#define LAT_START(tag) uint64_t tag##_lat_start = lat_now_ns()
+#define LAT_END(vec, tag) vec.push_back(lat_now_ns() - tag##_lat_start)
+#else
+#define LAT_START(tag)
+#define LAT_END(vec, tag)
+#endif
+
+static const std::vector<uint64_t> LAT_BUCKETS_NS = {
+    100,        // 100 ns
+    200,
+    500,
+    1'000,     // 1 µs
+    2'000,
+    5'000,
+    10'000,    // 10 µs
+    20'000,
+    50'000,
+    100'000,   // 100 µs
+    200'000,
+    500'000,
+    1'000'000, // 1 ms
+    2'000'000,
+    5'000'000,
+    10'000'000 // 10 ms+
+};
+
 struct PhaseMetrics 
 {
     std::string scenario;
@@ -140,6 +181,8 @@ static void replay_trace_and_write_snapshot(const std::string &traceFile,
     }
 
     Orderbook ob; // fresh instance
+    if(enableEventLogging)
+        ob.EnableEvents(true);
 
     // prepare replay event log using shared_ptr to keep stream alive safely
     std::shared_ptr<std::ofstream> eventsReplayPtr;
@@ -282,8 +325,9 @@ int main(int argc, char** argv)
     // --- configuration ---
     struct Scenario { std::string name; uint64_t bulk; uint64_t rnd_ops; };
 
-    const bool CORRECTNESS_ONLY = (cfg.mode == RunMode::Correctness);   // <<< CHANGE THIS WHEN NEEDED
+    const bool CORRECTNESS_ONLY = (cfg.mode == RunMode::Correctness);   // Derived from CLI flags
     const bool ENABLE_EVENT_LOGGING = (cfg.enable_events && CORRECTNESS_ONLY); // set false to disable event logging for faster perf runs
+    const bool PERF_MODE = (cfg.mode == RunMode::Performance);
 
     std::vector<Scenario> scenarios;
     double QUERY_FRACTION;
@@ -321,8 +365,7 @@ int main(int argc, char** argv)
         // ---------------------------
         scenarios = {
             { "100k-100k", 100'000, 100'000 },
-            { "500k-200k", 500'000, 200'000 },
-            { "1M-500k",   1'000'000, 500'000 }
+            { "200k-200k", 200'000, 200'000 }
         };
 
         QUERY_FRACTION  = 0.40;
@@ -357,8 +400,11 @@ int main(int argc, char** argv)
 
         // trace file for this scenario
         std::string traceFile = cfg.paths.traces + std::string("trace_ops_") + sc.name + ".csv";
-        std::ofstream trace(traceFile);
-        trace_write_header(trace, seed, sc.name);
+        std::ofstream trace;
+        if (!PERF_MODE) {
+            trace.open(traceFile);
+            trace_write_header(trace, seed, sc.name);
+        }
 
         // Prepare event log for golden run (gated by ENABLE_EVENT_LOGGING)
         std::string eventsGoldenFile = cfg.paths.events_golden + std::string("events_golden_") + sc.name + ".csv";
@@ -403,7 +449,9 @@ int main(int argc, char** argv)
                 int qty = qty_dist(rng);
                 auto o = std::make_shared<Order>(OrderType::GoodTillCancel, id, s, price, qty);
                 ob.AddOrder(o);
-                trace_write_add(trace, id, static_cast<int>(OrderType::GoodTillCancel), static_cast<int>(s), price, qty);
+                if (!PERF_MODE) {
+                    trace_write_add(trace, id, static_cast<int>(OrderType::GoodTillCancel), static_cast<int>(s), price, qty);
+                }
                 if (KEEP_PTRS && (i & 63) == 0) stored.push_back(o);
             }
             PhaseMetrics m{sc.name, "warmup", WARMUP_ORDERS, t.nanoseconds(), t.cycles()};
@@ -416,18 +464,26 @@ int main(int argc, char** argv)
         {
             // --- Explicit FOK correctness cases ---
             ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 900001, Side::Sell, 100, 10));
-            trace_write_add(trace, 900001, static_cast<int>(OrderType::GoodTillCancel),static_cast<int>(Side::Sell), 100, 10);
+            if (!PERF_MODE) {
+                trace_write_add(trace, 900001, static_cast<int>(OrderType::GoodTillCancel),static_cast<int>(Side::Sell), 100, 10);
+            }
 
             ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 900002, Side::Sell, 101, 10));
-            trace_write_add(trace, 900002, static_cast<int>(OrderType::GoodTillCancel),static_cast<int>(Side::Sell), 101, 10);
+            if (!PERF_MODE) {
+                trace_write_add(trace, 900002, static_cast<int>(OrderType::GoodTillCancel),static_cast<int>(Side::Sell), 101, 10);
+            }
 
             // FOK should succeed
             ob.AddOrder(std::make_shared<Order>(OrderType::FillOrKill, 900010, Side::Buy, 101, 15));
-            trace_write_add(trace, 900010, static_cast<int>(OrderType::FillOrKill),static_cast<int>(Side::Buy), 101, 15);
+            if (!PERF_MODE) {
+                trace_write_add(trace, 900010, static_cast<int>(OrderType::FillOrKill),static_cast<int>(Side::Buy), 101, 15);
+            }
 
             // FOK should fail (insufficient liquidity)
             ob.AddOrder(std::make_shared<Order>(OrderType::FillOrKill, 900011, Side::Buy, 101, 30));
-            trace_write_add(trace, 900011, static_cast<int>(OrderType::FillOrKill),static_cast<int>(Side::Buy), 101, 30);
+            if (!PERF_MODE) {
+                trace_write_add(trace, 900011, static_cast<int>(OrderType::FillOrKill),static_cast<int>(Side::Buy), 101, 30);
+            }
         }
 
         // --- Bulk insert ---
@@ -441,7 +497,9 @@ int main(int argc, char** argv)
                 int qty = qty_dist(rng);
                 auto o = std::make_shared<Order>(OrderType::GoodTillCancel, id, s, price, qty);
                 ob.AddOrder(o);
-                trace_write_add(trace, id, static_cast<int>(OrderType::GoodTillCancel), static_cast<int>(s), price, qty);
+                if (!PERF_MODE) {
+                    trace_write_add(trace, id, static_cast<int>(OrderType::GoodTillCancel), static_cast<int>(s), price, qty);
+                }
                 if (KEEP_PTRS) stored.push_back(o);
             }
             bulkM.ops = sc.bulk; bulkM.ns = t.nanoseconds(); bulkM.cycles = t.cycles();
@@ -453,7 +511,13 @@ int main(int argc, char** argv)
         for (auto &p : stored) live_ids.push_back(safe_get_order_id(p));
         std::uniform_int_distribution<size_t> idx_dist(0, live_ids.empty() ? 0 : live_ids.size() - 1);
 
-        // --- Randomized ops (with modify + match usage) ---
+        std::vector<uint64_t> lat_random_ops;
+        if (!CORRECTNESS_ONLY) {
+            lat_random_ops.reserve(sc.rnd_ops);
+        }
+
+        // Randomized workload mixes reads, cancels, matches, and adds
+        // to simulate realistic order flow without bias toward any path.
         PhaseMetrics rndM{sc.name, "random_ops"};
         {
             Timer t;
@@ -466,47 +530,76 @@ int main(int argc, char** argv)
 
                 // Query best
                 if (r < QUERY_FRACTION) {
+                    LAT_START(q);
                     if ((op & 1) == 0) { volatile auto b = ob.GetBestBidPrice(); (void)b; }
                     else              { volatile auto a = ob.GetBestAskPrice(); (void)a; }
+                    LAT_END(lat_random_ops, q);
                     ++count_queries; continue;
                 }
 
                 // Cancel
                 if (r < QUERY_FRACTION + CANCEL_FRACTION) {
+                    uint64_t lat = 0;
                     if (!live_ids.empty()) {
                         size_t idx = idx_dist(rng) % live_ids.size();
                         uint32_t id = live_ids[idx];
+                        LAT_START(c);
                         ob.CancelOrder(id);
-                        trace_write_cancel(trace, id);
+                        lat = lat_now_ns() - c_lat_start;
+                        if (!PERF_MODE) {
+                            trace_write_cancel(trace, id);
+                        }
                         live_ids[idx] = live_ids.back(); 
                         live_ids.pop_back();
-                        if (!live_ids.empty()) idx_dist = std::uniform_int_distribution<size_t>(0, live_ids.size() - 1);
+                        if (!live_ids.empty()) 
+                            idx_dist = std::uniform_int_distribution<size_t>(0, live_ids.size() - 1);
                         ++count_cancels;
+                    }else {
+                        // empty cancel → measure minimal overhead (still one sample)
+                        LAT_START(c);
+                        lat = lat_now_ns() - c_lat_start;
                     }
+                    lat_random_ops.push_back(lat);
                     continue;
                 }
 
                 // Match explicit
                 if (r < QUERY_FRACTION + CANCEL_FRACTION + MATCH_FRACTION) {
+                    LAT_START(m);
                     ob.MatchOrders();
-                    trace_write_match(trace);
+                    LAT_END(lat_random_ops, m);
+                    if (!PERF_MODE) {
+                        trace_write_match(trace);
+                    }
                     ++count_matches; 
                     continue;
                 }
 
                 // Add or Modify
                 // Occasionally pick an existing order and modify it to test MatchOrder(OrderModify)
-                if ((op % 43) == 0 && !live_ids.empty()) {
-                    // modify existing
-                    size_t idx = idx_dist(rng) % live_ids.size();
-                    uint32_t id = live_ids[idx];
-                    Side s = (op & 1) ? Side::Buy : Side::Sell;
-                    int price = price_dist(rng);
-                    int qty = qty_dist(rng);
-                    OrderModify om(id, s, price, qty);
-                    ob.MatchOrder(om);
-                    trace_write_modify(trace, id, static_cast<int>(s), price, qty);
-                    ++count_modifies;
+                if ((op % 41) == 0){
+                    uint64_t lat = 0;
+                    if(!live_ids.empty()) {
+                        // modify existing
+                        size_t idx = idx_dist(rng) % live_ids.size();
+                        uint32_t id = live_ids[idx];
+                        Side s = (op & 1) ? Side::Buy : Side::Sell;
+                        int price = price_dist(rng);
+                        int qty = qty_dist(rng);
+                        OrderModify om(id, s, price, qty);
+                        LAT_START(md);
+                        ob.MatchOrder(om);
+                        lat = lat_now_ns() - md_lat_start;
+                        if (!PERF_MODE) {
+                            trace_write_modify(trace, id, static_cast<int>(s), price, qty);
+                        }
+                        ++count_modifies;
+                    } else {
+                        LAT_START(md);
+                        lat = lat_now_ns() - md_lat_start;
+                    }
+
+                    lat_random_ops.push_back(lat);
                     continue;
                 }
 
@@ -520,13 +613,19 @@ int main(int argc, char** argv)
                     OrderType type = OrderType::GoodTillCancel;
                     
                     // Explicit, non-overlapping coverage(Spread order types deterministically without bias)
-                    if ((op % 97) == 0) type = OrderType::Market;
-                    else if ((op % 61) == 0) type = OrderType::ImmediateOrCancel;
+                    if ((op % 97) == 0) {
+                        type = OrderType::Market;
+                        price = 0;
+                    }else if ((op % 61) == 0) type = OrderType::ImmediateOrCancel;
                     else if ((op % 43) == 0) type = OrderType::FillOrKill;
 
                     auto o = std::make_shared<Order>(type, id, s, price, qty);
+                    LAT_START(a);
                     ob.AddOrder(o);
-                    trace_write_add(trace, id, static_cast<int>(type), static_cast<int>(s), price, qty);
+                    LAT_END(lat_random_ops, a);
+                    if (!PERF_MODE) {
+                        trace_write_add(trace, id, static_cast<int>(type), static_cast<int>(s), price, qty);
+                    }
 
                     if (KEEP_PTRS) stored.push_back(o);
                     live_ids.push_back(safe_get_order_id(o));
@@ -537,10 +636,85 @@ int main(int argc, char** argv)
 
             rndM.ops = sc.rnd_ops; rndM.ns = t.nanoseconds(); rndM.cycles = t.cycles();
             print_metrics_console(rndM); append_csv(csv, rndM);
+        }
 
-            std::cout << " breakdown: adds=" << count_adds << " cancels=" << count_cancels
-                      << " queries=" << count_queries << " matches=" << count_matches
-                      << " modifies=" << count_modifies << "\n\n";
+        if (!CORRECTNESS_ONLY && lat_random_ops.size() != sc.rnd_ops) {
+            std::cerr << "[LATENCY ERROR] expected "
+                    << sc.rnd_ops << " got "
+                    << lat_random_ops.size() << "\n";
+            std::abort();
+        }
+
+        std::vector<uint64_t> hist(LAT_BUCKETS_NS.size() + 1, 0);
+
+        for (uint64_t lat : lat_random_ops) {
+            size_t i = 0;
+            while (i < LAT_BUCKETS_NS.size() && lat > LAT_BUCKETS_NS[i]) {
+                ++i;
+            }
+            hist[i]++;
+        }
+
+        uint64_t p50 = 0, p90 = 0, p99 = 0;
+
+        std::vector<uint64_t> tmp;
+
+        auto percentile = [&](double p) {
+            tmp = lat_random_ops;
+            size_t idx = static_cast<size_t>(p * (tmp.size() - 1));
+            std::nth_element(tmp.begin(), tmp.begin() + idx, tmp.end());
+            return tmp[idx];
+        };
+
+        if (!CORRECTNESS_ONLY && !lat_random_ops.empty()) {
+            p50 = percentile(0.50);
+            p90 = percentile(0.90);
+            p99 = percentile(0.99);
+
+            std::cout << "[LATENCY random_ops] "
+                    << "p50=" << p50 << " ns "
+                    << "p90=" << p90 << " ns "
+                    << "p99=" << p99 << " ns\n";
+        }
+
+        if (!CORRECTNESS_ONLY) {
+            std::string latCsv =
+                cfg.paths.results + "latency_random_ops_" + sc.name + ".csv";
+
+            std::ofstream lf(latCsv);
+            lf << "bucket_ns,count\n";
+
+            for (size_t i = 0; i < hist.size(); ++i) {
+                if (i < LAT_BUCKETS_NS.size())
+                    lf << LAT_BUCKETS_NS[i] << "," << hist[i] << "\n";
+                else
+                    lf << "overflow," << hist[i] << "\n";
+            }
+
+            lf << "\npercentile,value_ns\n";
+            lf << "p50," << p50 << "\n";
+            lf << "p90," << p90 << "\n";
+            lf << "p99," << p99 << "\n";
+
+            lf.close();
+        }
+
+        if (!CORRECTNESS_ONLY && !lat_random_ops.empty()) {
+
+            static std::ofstream summary_csv(
+                cfg.paths.results + "latency_summary.csv",
+                std::ios::app
+            );
+
+            if (summary_csv.tellp() == 0) {
+                summary_csv << "scenario,ops,p50_ns,p90_ns,p99_ns\n";
+            }
+
+            summary_csv << sc.name << ","
+                        << sc.rnd_ops << ","
+                        << p50 << ","
+                        << p90 << ","
+                        << p99 << "\n";
         }
 
         // Best-bid stress test
@@ -556,44 +730,52 @@ int main(int argc, char** argv)
 
         // write golden snapshot
         std::string goldenSnapshot = cfg.paths.snapshots_golden + std::string("snapshot_golden_") + sc.name + ".txt";
-        write_snapshot(goldenSnapshot, ob);
+        if (!PERF_MODE) {
+            write_snapshot(goldenSnapshot, ob);
+        }
 
         // unregister observer before closing the stream=
         ob.SetObserver(nullptr);
 
         // close events golden file & trace
         if (eventsGoldenPtr && eventsGoldenPtr->is_open()) eventsGoldenPtr->close();
-        trace.close();
+        if(!PERF_MODE)
+            trace.close();
 
         // replay trace and write replay snapshot & replay events
         std::string replaySnapshot = cfg.paths.snapshots_replay + std::string("snapshot_replay_") + sc.name + ".txt";
         std::string eventsReplayFile = cfg.paths.events_replay + std::string("events_replay_") + sc.name + ".csv";
-        replay_trace_and_write_snapshot(traceFile, replaySnapshot, eventsReplayFile, ENABLE_EVENT_LOGGING);
+        if (!PERF_MODE) {
+            replay_trace_and_write_snapshot(traceFile, replaySnapshot, eventsReplayFile, ENABLE_EVENT_LOGGING);
+        }
 
         // compare snapshots
-        std::string diff;
-        bool ok = compare_snapshots(goldenSnapshot, replaySnapshot, diff);
+        if (!PERF_MODE) {
+            std::string diff;
+            bool ok = compare_snapshots(goldenSnapshot, replaySnapshot, diff);
 
-        if (!ok) {
-            std::cerr << "REPLAY MISMATCH for scenario " << sc.name << ":\n" << diff << "\n";
-        } else {
-            std::cout << "REPLAY OK for scenario " << sc.name << "\n";
+            if (!ok) {
+                std::cerr << "REPLAY MISMATCH for scenario " << sc.name << ":\n" << diff << "\n";
+            } else {
+                std::cout << "REPLAY OK for scenario " << sc.name << "\n";
+            }
         }
 
         // compare event logs (optional; prints diff if mismatch)
-        std::string eventDiff;
-        bool events_ok = true;
-        if (ENABLE_EVENT_LOGGING) {
-            events_ok = compare_event_logs(eventsGoldenFile, eventsReplayFile, eventDiff);
-            if (!events_ok) {
-                std::cerr << "EVENT LOG MISMATCH for scenario " << sc.name << ":\n" << eventDiff << "\n";
+        if (!PERF_MODE) {
+            std::string eventDiff;
+            bool events_ok = true;
+            if (ENABLE_EVENT_LOGGING) {
+                events_ok = compare_event_logs(eventsGoldenFile, eventsReplayFile, eventDiff);
+                if (!events_ok) {
+                    std::cerr << "EVENT LOG MISMATCH for scenario " << sc.name << ":\n" << eventDiff << "\n";
+                } else {
+                    std::cout << "EVENT LOGS MATCH for scenario " << sc.name << "\n";
+                }
             } else {
-                std::cout << "EVENT LOGS MATCH for scenario " << sc.name << "\n";
+                std::cout << "[SCENARIO " << sc.name << "] event logging disabled, skipping event compare\n";
             }
-        } else {
-            std::cout << "[SCENARIO " << sc.name << "] event logging disabled, skipping event compare\n";
         }
-
         std::cout << "Scenario " << sc.name << " finished. Orderbook size: " << ob.Size() << "\n\n";
     }
 

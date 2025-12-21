@@ -8,8 +8,14 @@
 # ------------------------------
 bench/events/
 bench/snapshots/
-bench/results/
 bench/traces/
+
+# Ignore all benchmark results by default
+bench/results/*
+
+# Allow committed performance summaries
+!bench/results/bench_results.csv
+!bench/results/latency_summary.csv
 
 # ------------------------------
 # OS / editor noise
