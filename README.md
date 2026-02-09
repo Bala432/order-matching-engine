@@ -98,14 +98,22 @@ OME/
 ```
 ---
 
-## Build (Windows / MinGW)
+## Build
+
+### Linux
+```bash
+make correctness
+make bench
+```
+
+### Windows (MinGW)
 
 ### Correctness tests
-```
+```bash
 mingw32-make correctness
 ```
 ### Benchmark binary
-```
+```bash
 mingw32-make bench
 ```
 This builds the benchmark binary:

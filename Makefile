@@ -3,7 +3,7 @@ CXX := g++
 # --------------------------------------------------
 # Common flags (shared by all builds)
 # --------------------------------------------------
-COMMON_FLAGS := -std=c++20 -pthread -DNDEBUG -Iinclude -Ibench
+COMMON_FLAGS := -std=c++2a -pthread -DNDEBUG -Iinclude -Ibench
 
 # --------------------------------------------------
 # Optimization profiles
@@ -53,4 +53,4 @@ bench: $(BENCH_SRC) $(SRC)
 # Cleanup
 # --------------------------------------------------
 clean:
-	-del /Q *.exe 2>nul || rm -f *.exe
+	rm -f *.exe

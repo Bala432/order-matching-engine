@@ -3,7 +3,7 @@
 // Writes snapshot_golden_<scenario>.txt and snapshot_replay_<scenario>.txt and compares them
 // Writes event logs: events_golden_<scenario>.csv and events_replay_<scenario>.csv
 
-#include "benchmark.h"   
+#include "Benchmark.h"   
 #include "Orderbook.h"
 #include "Order.h"
 #include "OrderModify.h"
