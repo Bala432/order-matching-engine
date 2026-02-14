@@ -68,6 +68,16 @@ It is **not** intended to:
 
 ---
 
+## Allocation Model
+
+The benchmark uses a fixed-capacity Orderpool to avoid dynamic allocation during matching.
+
+Pool size is derived from the workload scenario to ensure no allocation failures during correctness or performance runs.
+
+This removes allocator noise from latency measurements and improves reproducibility across runs.
+
+---
+
 ## Workloads
 
 Each benchmark run consists of the following phases:
@@ -152,6 +162,24 @@ Console output additionally reports:
 
 ---
 
+## Test Environment
+
+Performance measurements were collected under the following configuration:
+
+- CPU: Intel Core i5-4430 (4 cores, 3.0 GHz base, 3.2 GHz turbo)
+- Architecture: x86_64
+- L1 Cache: 128 KiB (data) / 128 KiB (instruction)
+- L2 Cache: 1 MiB
+- L3 Cache: 6 MiB
+- Threads per core: 1 (SMT disabled)
+- NUMA nodes: 1
+- OS: Linux (Ubuntu-based)
+- Compiler: g++ (C++20)
+- Build flags: -O3 -march=native -DNDEBUG -pthread
+- Execution mode: single-threaded
+
+---
+
 ## Offline Analysis
 
 Offline analysis is intentionally separated from the benchmark harness.
@@ -164,10 +192,7 @@ Offline analysis is intentionally separated from the benchmark harness.
 
 ## Notes
 
-- Performance results committed in this repository were collected using
-  debugging builds.
-- More aggressive compiler flags (`-O3 -march=native`) are recommended for
-  future optimization studies and are not yet reflected in the committed results.
+- Performance results were collected using -O3 -march=native -DNDEBUG on a single-threaded Linux x86_64 system.
 - Event logging is disabled in performance mode to eliminate observer overhead.
 - Tail latency is primarily influenced by:
   - order-book depth (number of price levels)

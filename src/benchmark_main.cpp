@@ -5,8 +5,8 @@
 
 #include "Benchmark.h"   
 #include "Orderbook.h"
-#include "Order.h"
 #include "OrderModify.h"
+#include "Usings.h"
 #include "bench_config.h"
 #include <iostream>
 #include <fstream>
@@ -172,7 +172,8 @@ static bool compare_event_logs(const std::string &a, const std::string &b, std::
 static void replay_trace_and_write_snapshot(const std::string &traceFile,
                                             const std::string &outSnapshotFile,
                                             const std::string &eventsReplayFile,
-                                            bool enableEventLogging) 
+                                            bool enableEventLogging,
+                                            size_t pool_size) 
 {
     std::ifstream in(traceFile);
     if (!in) {
@@ -180,7 +181,7 @@ static void replay_trace_and_write_snapshot(const std::string &traceFile,
         return;
     }
 
-    Orderbook ob; // fresh instance
+    Orderbook ob(pool_size); // fresh instance
     if(enableEventLogging)
         ob.EnableEvents(true);
 
@@ -238,8 +239,7 @@ static void replay_trace_and_write_snapshot(const std::string &traceFile,
                 if (!std::getline(iss, token, ',')) throw std::runtime_error("missing qty");
                 int qty = std::stoi(token);
 
-                auto o = std::make_shared<Order>(static_cast<OrderType>(tval),id, static_cast<Side>(sval), price, qty);
-                ob.AddOrder(o);
+                ob.AddOrder(static_cast<OrderType>(tval),id, static_cast<Side>(sval), price, qty);
                 ++ops_executed;
             }
             else if (op == "CANCEL") {
@@ -294,13 +294,6 @@ static void replay_trace_and_write_snapshot(const std::string &traceFile,
     // Write final snapshot
     write_snapshot(outSnapshotFile, ob);
     std::cout << "[REPLAY] Wrote replay snapshot to " << outSnapshotFile << "\n";
-}
-
-// ---------- small util to extract id from OrderPointer ----------
-static uint32_t safe_get_order_id(const OrderPointer &p) 
-{
-    if (!p) return 0;
-    return p->GetOrderId();
 }
 
 // ---------- main harness ----------
@@ -390,6 +383,7 @@ int main(int argc, char** argv)
     for (const auto &sc : scenarios) {
         uint64_t seed = base_seed ^ std::hash<std::string>{}(sc.name);
         std::mt19937_64 rng(seed);
+        size_t pool_size = sc.bulk + sc.rnd_ops;
 
         // Prepare RNG and dists
         std::uniform_int_distribution<int> price_dist(1, 1000);
@@ -419,7 +413,7 @@ int main(int argc, char** argv)
             }
         }
 
-        Orderbook ob;
+        Orderbook ob(pool_size);
         ob.EnableEvents(cfg.enable_events);
 
         // register observer for golden run (writes to events_golden_<scenario>.csv) if enabled
@@ -436,7 +430,7 @@ int main(int argc, char** argv)
             });
         }
 
-        std::vector<OrderPointer> stored;
+        std::vector<OrderId> stored;
         stored.reserve(static_cast<size_t>(sc.bulk) + static_cast<size_t>(sc.rnd_ops / 4));
 
         // --- Warmup ---
@@ -447,40 +441,39 @@ int main(int argc, char** argv)
                 Side s = (i & 1) ? Side::Buy : Side::Sell;
                 int price = price_dist(rng);
                 int qty = qty_dist(rng);
-                auto o = std::make_shared<Order>(OrderType::GoodTillCancel, id, s, price, qty);
-                ob.AddOrder(o);
+                ob.AddOrder(OrderType::GoodTillCancel, id, s, price, qty);
                 if (!PERF_MODE) {
                     trace_write_add(trace, id, static_cast<int>(OrderType::GoodTillCancel), static_cast<int>(s), price, qty);
                 }
-                if (KEEP_PTRS && (i & 63) == 0) stored.push_back(o);
+                if (KEEP_PTRS && (i & 63) == 0) stored.push_back(id);
             }
             PhaseMetrics m{sc.name, "warmup", WARMUP_ORDERS, t.nanoseconds(), t.cycles()};
             print_metrics_console(m); append_csv(csv, m);
-            for (auto &p : stored) ob.CancelOrder(safe_get_order_id(p));
+            for (auto stored_id : stored) ob.CancelOrder(stored_id);
             stored.clear();
         }
         
         if (CORRECTNESS_ONLY) 
         {
             // --- Explicit FOK correctness cases ---
-            ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 900001, Side::Sell, 100, 10));
+            ob.AddOrder(OrderType::GoodTillCancel, 900001, Side::Sell, 100, 10);
             if (!PERF_MODE) {
                 trace_write_add(trace, 900001, static_cast<int>(OrderType::GoodTillCancel),static_cast<int>(Side::Sell), 100, 10);
             }
 
-            ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 900002, Side::Sell, 101, 10));
+            ob.AddOrder(OrderType::GoodTillCancel, 900002, Side::Sell, 101, 10);
             if (!PERF_MODE) {
                 trace_write_add(trace, 900002, static_cast<int>(OrderType::GoodTillCancel),static_cast<int>(Side::Sell), 101, 10);
             }
 
             // FOK should succeed
-            ob.AddOrder(std::make_shared<Order>(OrderType::FillOrKill, 900010, Side::Buy, 101, 15));
+            ob.AddOrder(OrderType::FillOrKill, 900010, Side::Buy, 101, 15);
             if (!PERF_MODE) {
                 trace_write_add(trace, 900010, static_cast<int>(OrderType::FillOrKill),static_cast<int>(Side::Buy), 101, 15);
             }
 
             // FOK should fail (insufficient liquidity)
-            ob.AddOrder(std::make_shared<Order>(OrderType::FillOrKill, 900011, Side::Buy, 101, 30));
+            ob.AddOrder(OrderType::FillOrKill, 900011, Side::Buy, 101, 30);
             if (!PERF_MODE) {
                 trace_write_add(trace, 900011, static_cast<int>(OrderType::FillOrKill),static_cast<int>(Side::Buy), 101, 30);
             }
@@ -495,12 +488,11 @@ int main(int argc, char** argv)
                 Side s = (i & 1) ? Side::Buy : Side::Sell;
                 int price = price_dist(rng);
                 int qty = qty_dist(rng);
-                auto o = std::make_shared<Order>(OrderType::GoodTillCancel, id, s, price, qty);
-                ob.AddOrder(o);
+                ob.AddOrder(OrderType::GoodTillCancel, id, s, price, qty);
                 if (!PERF_MODE) {
                     trace_write_add(trace, id, static_cast<int>(OrderType::GoodTillCancel), static_cast<int>(s), price, qty);
                 }
-                if (KEEP_PTRS) stored.push_back(o);
+                if (KEEP_PTRS) stored.push_back(id);
             }
             bulkM.ops = sc.bulk; bulkM.ns = t.nanoseconds(); bulkM.cycles = t.cycles();
             print_metrics_console(bulkM); append_csv(csv, bulkM);
@@ -508,7 +500,7 @@ int main(int argc, char** argv)
 
         std::vector<uint32_t> live_ids;
         live_ids.reserve(stored.size());
-        for (auto &p : stored) live_ids.push_back(safe_get_order_id(p));
+        for (auto stored_id : stored) live_ids.push_back(stored_id);
         std::uniform_int_distribution<size_t> idx_dist(0, live_ids.empty() ? 0 : live_ids.size() - 1);
 
         std::vector<uint64_t> lat_random_ops;
@@ -619,16 +611,15 @@ int main(int argc, char** argv)
                     }else if ((op % 61) == 0) type = OrderType::ImmediateOrCancel;
                     else if ((op % 43) == 0) type = OrderType::FillOrKill;
 
-                    auto o = std::make_shared<Order>(type, id, s, price, qty);
                     LAT_START(a);
-                    ob.AddOrder(o);
+                    ob.AddOrder(type, id, s, price, qty);
                     LAT_END(lat_random_ops, a);
                     if (!PERF_MODE) {
                         trace_write_add(trace, id, static_cast<int>(type), static_cast<int>(s), price, qty);
                     }
 
-                    if (KEEP_PTRS) stored.push_back(o);
-                    live_ids.push_back(safe_get_order_id(o));
+                    if (KEEP_PTRS) stored.push_back(id);
+                    live_ids.push_back(id);
                     idx_dist = std::uniform_int_distribution<size_t>(0, live_ids.size() - 1);
                     ++count_adds;
                 }
@@ -746,7 +737,7 @@ int main(int argc, char** argv)
         std::string replaySnapshot = cfg.paths.snapshots_replay + std::string("snapshot_replay_") + sc.name + ".txt";
         std::string eventsReplayFile = cfg.paths.events_replay + std::string("events_replay_") + sc.name + ".csv";
         if (!PERF_MODE) {
-            replay_trace_and_write_snapshot(traceFile, replaySnapshot, eventsReplayFile, ENABLE_EVENT_LOGGING);
+            replay_trace_and_write_snapshot(traceFile, replaySnapshot, eventsReplayFile, ENABLE_EVENT_LOGGING, pool_size);
         }
 
         // compare snapshots

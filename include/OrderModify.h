@@ -4,7 +4,6 @@
 #include "OrderType.h"
 #include "Side.h"
 #include "Order.h"
-#include <memory>
 
 class OrderModify{
 private:
@@ -23,7 +22,4 @@ public:
     Price GetPrice() const { return price_; }
     Quantity GetQuantity() const { return quantity_; }
     
-    OrderPointer ToOrderPointer(OrderType type) const {
-        return std::make_shared<Order>(type, GetOrderId(), GetSide(), GetPrice(), GetQuantity());
-    }
 };

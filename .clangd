@@ -1,0 +1,8 @@
+CompileFlags:
+  Add: [
+    -std=c++2a,
+    -I/home/viswanadh/projects/order-matching-engine/include,
+    -I/home/viswanadh/projects/order-matching-engine/bench,
+    -pthread
+  ]
+  Remove: [-std=*]

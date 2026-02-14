@@ -54,6 +54,15 @@ Matching snapshots guarantee:
 - absence of hidden state
 - correctness across all supported order types
 
+## Memory Management
+   Orders are stored using a fixed-capacity object pool (Orderpool).
+   - Orders are preallocated at Orderbook construction.
+   - AddOrder() acquires an Order* from the pool.
+   - Filled and cancelled orders are explicitly released.
+   - Orders are reused via ResetOrder().
+
+This replaces a previous std::shared_ptr-based design and removes reference-count overhead and dynamic allocation of Objects, while preserving deterministic behavior.
+
 Generated artifacts (events, traces, snapshots) are **local outputs only** and are **not committed**.
 
 In addition to trace–replay validation, a lightweight assert-based unit test
@@ -85,7 +94,8 @@ OME/
 │   ├── TradeInfo.h
 │   ├── Trade.h
 │   ├── Event.h
-│   └── Benchmark.h
+│   ├── Benchmark.h
+│   └── Orderpool.h
 ├── bench/
 │   ├── bench_config.h
 │   └── README.bench.md
@@ -94,6 +104,7 @@ OME/
 │   └── latency_vs_size.png
 ├── Makefile
 ├── README.md
+├── .clangd
 └── .gitignore
 ```
 ---
@@ -133,6 +144,32 @@ This run:
 - records golden and replay event streams
 - produces final order-book snapshots
 - validates deterministic behavior
+
+## Performance Evolution
+
+The engine initially used `std::shared_ptr` for order ownership.
+This was later replaced with a fixed-capacity `Orderpool`
+to eliminate reference counting and dynamic allocation overhead.
+
+Measured improvements (single-threaded, -O3 -march=native, Intel i5-4430, Linux x86_64):
+
+### 100k-100k scenario (random_ops)
+
+- Throughput: ~28% improvement
+- p50 latency: 200ns → 114ns
+- p99 latency: 899µs → 550µs (~39% reduction)
+
+### 200k-200k scenario (random_ops)
+
+- Throughput: ~31% improvement
+- p50 latency: 300ns → 168ns
+- p99 latency: 2.90ms → 1.63ms (~44% reduction)
+
+These improvements are attributed to:
+- Removal of atomic reference counting
+- Elimination of per-order heap allocation
+- Improved cache locality and memory reuse
+
 
 
 ## Notes

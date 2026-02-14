@@ -11,7 +11,6 @@
 
 
 #include "Orderbook.h"
-#include "Order.h"
 #include <cassert>
 #include <iostream>
 
@@ -29,15 +28,12 @@ static uint32_t total_qty(const Trades& trades) {
 }
 
 void test_market_sell_sweeps_bids() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Buy, 101, 5));
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 2, Side::Buy, 100, 10));
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 3, Side::Buy, 98, 20));
-
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::Market, 10, Side::Sell, /*ignored*/ 0, 18)
-    );
+    ob.AddOrder(OrderType::GoodTillCancel, 1, Side::Buy, 101, 5);
+    ob.AddOrder(OrderType::GoodTillCancel, 2, Side::Buy, 100, 10);
+    ob.AddOrder(OrderType::GoodTillCancel, 3, Side::Buy, 98, 20);
+    auto trades = ob.AddOrder(OrderType::Market, 10, Side::Sell, /*ignored*/ 0, 18);
 
     assert(trades.size() == 3);
     assert(trades[0].GetBidTrade().price_ == 101);
@@ -48,12 +44,11 @@ void test_market_sell_sweeps_bids() {
 }
 
 void test_market_buy_sweeps_asks() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10));
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 2, Side::Sell, 101, 20));
-
-    auto trades = ob.AddOrder(std::make_shared<Order>(OrderType::Market, 10, Side::Buy, 0, 25));
+    ob.AddOrder(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10);
+    ob.AddOrder(OrderType::GoodTillCancel, 2, Side::Sell, 101, 20);
+    auto trades = ob.AddOrder(OrderType::Market, 10, Side::Buy, 0, 25);
 
     assert(trades.size() == 2);
     assert(trades[0].GetAskTrade().price_ == 100);
@@ -65,13 +60,10 @@ void test_market_buy_sweeps_asks() {
 }
 
 void test_market_buy_partial_fill() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Sell, 100, 5));
-
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::Market, 10, Side::Buy, 0, 20)
-    );
+    ob.AddOrder(OrderType::GoodTillCancel, 1, Side::Sell, 100, 5);
+    auto trades = ob.AddOrder(OrderType::Market, 10, Side::Buy, 0, 20);
 
     assert(trades.size() == 1);
     assert(total_qty(trades) == 5);
@@ -79,59 +71,47 @@ void test_market_buy_partial_fill() {
 }
 
 void test_market_buy_empty_book() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::Market, 1, Side::Buy, 0, 10)
-    );
+    auto trades = ob.AddOrder(OrderType::Market, 1, Side::Buy, 0, 10);
 
     assert(trades.empty());
     assert(ob.Size() == 0);
 }
 
 void test_market_sell_empty_book() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::Market, 2, Side::Sell, 0, 10)
-    );
+    auto trades = ob.AddOrder(OrderType::Market, 2, Side::Sell, 0, 10);
 
     assert(trades.empty());
     assert(ob.Size() == 0);
 }
 
 void test_ioc_buy_partial() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10));
-
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::ImmediateOrCancel, 2, Side::Buy, 100, 20)
-    );
+    ob.AddOrder(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10);
+    auto trades = ob.AddOrder(OrderType::ImmediateOrCancel, 2, Side::Buy, 100, 20);
 
     assert(total_qty(trades) == 10);
     assert(ob.Size() == 0);
 }
 
 void test_ioc_buy_no_match() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::ImmediateOrCancel, 1, Side::Buy, 100, 10)
-    );
+    auto trades = ob.AddOrder(OrderType::ImmediateOrCancel, 1, Side::Buy, 100, 10);
 
     assert(trades.empty());
     assert(ob.Size() == 0);
 }
 
 void test_fok_buy_fail() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10));
-
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::FillOrKill, 2, Side::Buy, 100, 20)
-    );
+    ob.AddOrder(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10);
+    auto trades = ob.AddOrder(OrderType::FillOrKill, 2, Side::Buy, 100, 20);
 
     assert(trades.empty());
     assert(ob.Size() == 1); // original ask untouched
@@ -139,24 +119,21 @@ void test_fok_buy_fail() {
 
 
 void test_fok_buy_success() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10));
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 2, Side::Sell, 100, 5));
-
-    auto trades = ob.AddOrder(
-        std::make_shared<Order>(OrderType::FillOrKill, 3, Side::Buy, 100, 15)
-    );
+    ob.AddOrder(OrderType::GoodTillCancel, 1, Side::Sell, 100, 10);
+    ob.AddOrder(OrderType::GoodTillCancel, 2, Side::Sell, 100, 5);
+    auto trades = ob.AddOrder(OrderType::FillOrKill, 3, Side::Buy, 100, 15);
 
     assert(total_qty(trades) == 15);
     assert(ob.Size() == 0);
 }
 
 void test_gtc_resting_after_market() {
-    Orderbook ob;
+    Orderbook ob(10);
 
-    ob.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Buy, 99, 10));
-    ob.AddOrder(std::make_shared<Order>(OrderType::Market, 2, Side::Buy, 0, 10));
+    ob.AddOrder(OrderType::GoodTillCancel, 1, Side::Buy, 99, 10);
+    ob.AddOrder(OrderType::Market, 2, Side::Buy, 0, 10);
 
     // No asks → OrderType::Market Side::Buy cancels
     assert(ob.Size() == 1);

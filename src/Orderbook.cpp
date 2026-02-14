@@ -1,7 +1,8 @@
 #include "Orderbook.h"
+#include "Order.h"
 #include <numeric>
 
-Orderbook::Orderbook(){}
+Orderbook::Orderbook(size_t size) : orderpool(size){}
 
 Orderbook::~Orderbook(){}
 
@@ -22,11 +23,11 @@ void Orderbook::EnableEvents(bool enabled)
 std::string Event::to_csv() const {
     // format: seq,type,order_id,order_id2,price,qty,side
     char buf[256];
-    int n = snprintf(buf, sizeof(buf), "%llu,%u,%u,%u,%lld,%llu,%u",
+    int n = snprintf(buf, sizeof(buf), "%llu,%u,%llu,%llu,%lld,%llu,%u",
         (unsigned long long) seq,
         static_cast<unsigned>(type),
-        order_id,
-        order_id2,
+        (unsigned long long) order_id,
+        (unsigned long long) order_id2,
         static_cast<long long>(price),
         (unsigned long long)qty,
         static_cast<unsigned>(side)); 
@@ -94,7 +95,7 @@ void Orderbook::CancelOrder(OrderId orderId)
     if(!orders_.contains(orderId))
         return ;
     
-    const auto& [order, iterator] = orders_.at(orderId);
+    auto [order, iterator] = orders_.at(orderId);
     orders_.erase(orderId);
 
     Price price = order->GetPrice();
@@ -124,8 +125,10 @@ void Orderbook::CancelOrder(OrderId orderId)
         ev.side = (order->GetSide() == Side::Buy) ? 1 : 0;
         EmitEvent(ev);
     }
+    orderpool.release(order);
     UpdateBestPrices();
 }
+
 
 bool Orderbook::CanMatch(Side side, Price price) const {
     if(side == Side::Buy){
@@ -156,11 +159,9 @@ Trades Orderbook::MatchOrders(){
         {
             auto& bid = bids.front();
             auto& ask = asks.front();
-
             Quantity quantity = std::min(bid->GetRemainingQuantity(), ask->GetRemainingQuantity());
             bid->Fill(quantity);
             ask->Fill(quantity);
-
             Price tradePrice = (lastAggressorSide_ == Side::Buy)
                                 ? ask->GetPrice()   // buy aggressor hits ask
                                 : bid->GetPrice();  // sell aggressor hits bid
@@ -186,13 +187,17 @@ Trades Orderbook::MatchOrders(){
             }
 
              if(bid->IsFilled()){
-                orders_.erase(bid->GetOrderId());
+                OrderPointer filledBid = bid;
                 bids.pop_front();
+                orders_.erase(filledBid->GetOrderId());
+                orderpool.release(filledBid);
             }
 
             if(ask->IsFilled()){
-                orders_.erase(ask->GetOrderId());
+                OrderPointer filledAsk = ask;
                 asks.pop_front();
+                orders_.erase(filledAsk->GetOrderId());
+                orderpool.release(filledAsk);
             }                
         }
         if(bids.empty())
@@ -222,17 +227,27 @@ Trades Orderbook::MatchOrders(){
     cleanup_side(asks_);
 
     UpdateBestPrices();
-
     return trades;
 }
 
-Trades Orderbook::AddOrder(OrderPointer order)
+Trades Orderbook::AddOrder(OrderType orderType, OrderId orderId, Side side, Price price, Quantity quantity)
 {
-    if(orders_.contains(order->GetOrderId()))
+    if(orders_.contains(orderId))
         return {};
 
-    lastAggressorSide_ = order->GetSide();
-    bool isMarket = (order->GetOrderType() == OrderType::Market);
+    lastAggressorSide_ = side;
+    bool isMarket = (orderType == OrderType::Market);
+    if (!isMarket) {
+        if(orderType == OrderType::ImmediateOrCancel && !CanMatch(side, price))
+            return {};
+
+        if(orderType == OrderType::FillOrKill && !CanFullyFill(side, price, quantity))
+            return {};
+    }
+    Order* order = orderpool.acquire();
+    if(order == nullptr) return {};
+
+    order->ResetOrder(orderType, orderId, side, price, quantity);
 
     if (isMarket) {
         Price aggressive = (order->GetSide() == Side::Buy)
@@ -242,15 +257,6 @@ Trades Orderbook::AddOrder(OrderPointer order)
         // Convert to IOC — ensures remainder auto-canceled in cleanup
         order->ToImmediateOrCancel(aggressive);
     }
-
-    if (!isMarket) {
-        if(order->GetOrderType() == OrderType::ImmediateOrCancel && !CanMatch(order->GetSide(), order->GetPrice()))
-            return {};
-
-        if(order->GetOrderType() == OrderType::FillOrKill && !CanFullyFill(order->GetSide(), order->GetPrice(), order->GetInitialQuantity()))
-            return {};
-    }
-
     OrderPointers::iterator iterator;
     auto& orders = (order->GetSide() == Side::Buy) ? bids_[order->GetPrice()] : asks_[order->GetPrice()];
     orders.push_back(order);
@@ -258,7 +264,6 @@ Trades Orderbook::AddOrder(OrderPointer order)
 
     UpdateBestPrices();
     orders_.insert({order->GetOrderId(), OrderEntry{order, iterator}});
-
     // <<<<<< EVENT: ADD
     if (events_enabled_) 
     {
@@ -272,7 +277,6 @@ Trades Orderbook::AddOrder(OrderPointer order)
         ev.side = (order->GetSide() == Side::Buy) ? 1 : 0;
         EmitEvent(ev);
     }
-
     return MatchOrders();
 }
 
@@ -282,6 +286,7 @@ Trades Orderbook::MatchOrder(OrderModify order)
         return {};
 
     const auto& [existingOrder, _] = orders_.at(order.GetOrderId());
+    OrderType type = existingOrder->GetOrderType();
 
     // Emit MODIFY event before we cancel/reinsert so logs show the modification intent
     if (events_enabled_) 
@@ -296,9 +301,8 @@ Trades Orderbook::MatchOrder(OrderModify order)
         ev.side = (order.GetSide() == Side::Buy) ? 1 : 0;
         EmitEvent(ev);
     }
-
     CancelOrder(order.GetOrderId());
-    return AddOrder(order.ToOrderPointer(existingOrder->GetOrderType()));
+    return AddOrder(type, order.GetOrderId(), order.GetSide(), order.GetPrice(), order.GetQuantity());
 }
 
 std::size_t Orderbook::Size() const 

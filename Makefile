@@ -10,6 +10,8 @@ COMMON_FLAGS := -std=c++2a -pthread -DNDEBUG -Iinclude -Ibench
 # --------------------------------------------------
 RELEASE_FLAGS := -O2
 PERF_FLAGS    := -O3 -march=native
+DEBUG_FLAGS   := -O0 -g
+SAN_FLAGS := -fsanitize=address -fno-omit-frame-pointer
 
 # --------------------------------------------------
 # Source files
@@ -24,6 +26,8 @@ BENCH_SRC       := src/benchmark_main.cpp
 # --------------------------------------------------
 CORRECTNESS_OUT := ob_correctness.exe
 BENCH_OUT       := ome_benchmark.exe
+BENCH_DEBUG_OUT := ome_benchmark_debug.exe
+
 
 # --------------------------------------------------
 # Targets
@@ -48,6 +52,12 @@ bench: $(BENCH_SRC) $(SRC)
 	@echo "Run:"
 	@echo "  ./$(BENCH_OUT) --mode=correctness --events"
 	@echo "  ./$(BENCH_OUT) --mode=perf"
+
+bench_debug: $(BENCH_SRC) $(SRC)
+	$(CXX) $(COMMON_FLAGS) $(DEBUG_FLAGS) $(SAN_FLAGS) $^ -o $(BENCH_DEBUG_OUT)
+	@echo "Built DEBUG benchmark with ASAN: $(BENCH_DEBUG_OUT)"
+	@echo "Run:"
+	@echo "  ./$(BENCH_DEBUG_OUT) --mode=correctness --events"
 
 # --------------------------------------------------
 # Cleanup

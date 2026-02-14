@@ -4,7 +4,6 @@
 #include "OrderType.h"
 #include "Side.h"
 #include <sstream>
-#include <memory>
 #include <list>
 
 class Order{
@@ -17,6 +16,8 @@ private:
     Quantity remainingQuantity_;
 
 public:
+    Order() = default;
+
     Order(OrderType orderType, OrderId orderId, Side side, Price price, Quantity quantity) : 
         orderType_{ orderType }, orderId_{ orderId }, side_{ side }, price_{ price }, initialQuantity_{ quantity }, remainingQuantity_{ quantity }
     {}
@@ -47,7 +48,16 @@ public:
         price_ = price;
         orderType_ = OrderType::ImmediateOrCancel;
     }
+
+    void ResetOrder(OrderType orderType, OrderId orderId, Side side, Price price, Quantity quantity){
+        orderType_ = orderType;
+        orderId_ = orderId;
+        side_ = side;
+        price_ = price;
+        initialQuantity_ = quantity;
+        remainingQuantity_ = quantity;
+    }
 };
 
-using OrderPointer = std::shared_ptr<Order>;
+using OrderPointer = Order*;
 using OrderPointers = std::list<OrderPointer>;

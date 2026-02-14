@@ -7,6 +7,7 @@
 #include "OrderModify.h"
 #include "OrderbookLevelInfos.h"
 #include "Event.h"
+#include "Orderpool.h"
 #include <map>
 #include <unordered_map>
 
@@ -37,15 +38,19 @@ private:
     uint64_t event_seq_{0}; 
     bool events_enabled_{false};
 
+    Orderpool orderpool;
+
 public:
-    Orderbook();
+    Orderbook(size_t size);
+    Orderpool& getOrderPool(){ return orderpool;}
     Orderbook(const Orderbook& ) = delete;
     void operator=(const Orderbook& ) = delete;
     Orderbook(Orderbook&&) = delete;
     void operator=(Orderbook&&) = delete;
     ~Orderbook();
 
-    Trades AddOrder(OrderPointer order);
+    // Trades AddOrder(OrderPointer order);
+    Trades AddOrder(OrderType orderType, OrderId orderId, Side side, Price price, Quantity quantity);
     void CancelOrder(OrderId orderId);
     Trades MatchOrder(OrderModify order);
     Trades MatchOrders();
