@@ -11,8 +11,7 @@ This project focuses on **correct matching semantics, determinism, and clean sys
 ### Supported Order Types
 
 - **Good-Till-Cancel (GTC)** — rests in the book until filled or canceled
-- **Market** — executes immediately by sweeping available opposite-side liquidity
-  (implemented internally via aggressive IOC conversion)
+- **Market** — executes immediately by sweeping available opposite-side liquidity (implemented internally via aggressive IOC conversion)
 - **Immediate-Or-Cancel (IOC)** — executes immediately; unfilled quantity is canceled
 - **Fill-Or-Kill (FOK)** — executes only if the entire quantity can be filled immediately
 
@@ -54,6 +53,14 @@ Matching snapshots guarantee:
 - absence of hidden state
 - correctness across all supported order types
 
+Generated artifacts (events, traces, snapshots) are **local outputs only** and are **not committed**.
+
+In addition to trace–replay validation, a lightweight assert-based unit test harness is provided to validate individual order type semantics in isolation.
+
+Detailed benchmark methodology and performance measurements are documented in `bench/README.bench.md`.
+
+---
+
 ## Memory Management
    Orders are stored using a fixed-capacity object pool (Orderpool).
    - Orders are preallocated at Orderbook construction.
@@ -62,14 +69,6 @@ Matching snapshots guarantee:
    - Orders are reused via ResetOrder().
 
 This replaces a previous std::shared_ptr-based design and removes reference-count overhead and dynamic allocation of Objects, while preserving deterministic behavior.
-
-Generated artifacts (events, traces, snapshots) are **local outputs only** and are **not committed**.
-
-In addition to trace–replay validation, a lightweight assert-based unit test
-harness is provided to validate individual order type semantics in isolation.
-
-Detailed benchmark methodology and performance measurements are documented
-in `bench/README.bench.md`.
 
 ---
 
