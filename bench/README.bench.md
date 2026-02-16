@@ -111,7 +111,9 @@ Current performance runs include:
 - **100k-100k**: 100k bulk insert + 100k random operations
 - **200k-200k**: 200k bulk insert + 200k random operations
 
-All runs are single-threaded to eliminate lock contention and scheduling noise.
+The primary performance harness is single-threaded to eliminate lock contention and scheduling noise.
+
+A separate multi-threaded integration benchmark (Feed → SPSC → Engine) is provided to evaluate end-to-end latency and queue behavior under controlled pacing.
 
 ---
 

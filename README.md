@@ -64,11 +64,68 @@ Detailed benchmark methodology and performance measurements are documented in `b
 ## Memory Management
    Orders are stored using a fixed-capacity object pool (Orderpool).
    - Orders are preallocated at Orderbook construction.
-   - AddOrder() acquires an Order* from the pool.
+   - AddOrder() acquires an Order instance from the pool.
    - Filled and cancelled orders are explicitly released.
    - Orders are reused via ResetOrder().
 
 This replaces a previous std::shared_ptr-based design and removes reference-count overhead and dynamic allocation of Objects, while preserving deterministic behavior.
+
+---
+
+## Threaded Benchmark (Feed → SPSC → Engine)
+
+In addition to the single-threaded benchmark harness, a multi-threaded integration benchmark is provided:
+
+- Simulated market feed thread
+- Lock-free SPSC queue
+- Dedicated matching engine thread
+- Core-pinned execution for reproducibility
+- Controlled inter-arrival pacing (e.g., 60µs)
+- Queue depth monitoring
+- Engine utilization measurement
+- End-to-end latency percentiles (p50 / p90 / p99 / p999)
+
+The threaded benchmark operates in a feed-limited regime to isolate engine behavior from burst-induced saturation.
+
+This benchmark is intended to validate:
+- correctness under concurrent integration
+- absence of message loss
+- deterministic behavior under pacing
+- basic queue backpressure characteristics
+
+It does not attempt to model exchange-grade networking, kernel bypass, or microsecond-level jitter tuning.
+
+### Example Feed-Limited Scenario
+
+Configuration:
+
+- 100,000 operations
+- 60µs inter-arrival time (~16.6k msgs/sec)
+- Lock-free SPSC queue (Feed → Engine)
+- Core-pinned producer and engine threads
+- Build flags: -O3 -march=native -DNDEBUG
+- Hardware: Intel i5-4430 (x86_64, Linux)
+
+Observed metrics:
+
+- Throughput: ~16.6k ops/sec (matches feed rate)
+- Average queue depth: ~1
+- Max queue depth: 1
+- Engine utilization: ~21.7%
+
+Latency distribution:
+
+- Queue latency:
+  - p50: ~165 ns
+  - p99: ~213 ns
+- Engine processing latency:
+  - p50: ~3.8 µs
+  - p99: ~53.8 µs
+- End-to-end latency (enqueue → processed):
+  - p50: ~4.0 µs
+  - p99: ~54.0 µs
+
+This scenario operates in a feed-limited regime, where the matching engine processes messages faster than they are produced, resulting in minimal queue buildup and stable latency characteristics.
 
 ---
 
@@ -80,7 +137,7 @@ OME/
 │   ├── Orderbook.cpp
 │   ├── benchmark_main.cpp
 │   ├── orderbook_correctness.cpp
-│   └── main.cpp
+│   └── benchmark_threaded.cpp
 ├── include/
 │   ├── Orderbook.h
 │   ├── Order.h
@@ -94,7 +151,9 @@ OME/
 │   ├── Trade.h
 │   ├── Event.h
 │   ├── Benchmark.h
-│   └── Orderpool.h
+│   ├── Orderpool.h
+│   ├── FeedMessage.h
+│   └── SPSCQueue.h
 ├── bench/
 │   ├── bench_config.h
 │   └── README.bench.md
@@ -114,6 +173,7 @@ OME/
 ```bash
 make correctness
 make bench
+make bench_threaded
 ```
 
 ### Windows (MinGW)
@@ -144,11 +204,25 @@ This run:
 - produces final order-book snapshots
 - validates deterministic behavior
 
+## Running Perf Mode
+
+Run the benchmark in perf mode:
+```
+./ome_benchmark.exe --mode=perf
+```
+
+## Running Threaded benchmark
+
+Run the threaded benchmark:
+```
+./ome_benchmark_threaded.exe
+```
+
 ## Performance Evolution
 
 The engine initially used `std::shared_ptr` for order ownership.
-This was later replaced with a fixed-capacity `Orderpool`
-to eliminate reference counting and dynamic allocation overhead.
+This was later replaced with a fixed-capacity `Orderpool` to eliminate reference counting and dynamic allocation overhead.
+A multi-threaded SPSC integration benchmark was later added to validate engine behavior under concurrent feed simulation.
 
 Measured improvements (single-threaded, -O3 -march=native, Intel i5-4430, Linux x86_64):
 
@@ -172,7 +246,6 @@ These improvements are attributed to:
 
 
 ## Notes
-- This project intentionally avoids exchange-specific optimizations (kernel bypass, networking, lock-free I/O)
-- The focus is on correct matching semantics and determinism
-- The benchmark harness exists primarily to support correctness claims
+- This project focuses on deterministic matching semantics and controlled benchmarking rather than exchange-specific kernel bypass or networking optimizations.
+- The benchmark harness supports both deterministic correctness validation and controlled performance analysis.
 - Performance benchmarks are provided for baseline analysis and are not presented as exchange-grade latency claims.
