@@ -19,7 +19,7 @@ struct BenchmarkConfig {
 };
 
 std::vector<BenchmarkConfig> scenarios = {
-    {1000000, 750000},  // latency mode (750µs pacing)
+    {1000000, 5000},  // latency mode (5µs pacing)
     {1000000, 0}        // throughput mode (no pacing)
 };
 

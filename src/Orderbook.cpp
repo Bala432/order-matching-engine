@@ -1,5 +1,6 @@
 #include "Orderbook.h"
 #include "Order.h"
+#include "OrderType.h"
 #include <numeric>
 
 Orderbook::Orderbook(size_t size) : orderpool(size){}
@@ -207,25 +208,6 @@ Trades Orderbook::MatchOrders(){
             asks_.erase(askPrice);
     }
 
-    auto cleanup_side = [&](auto& book){
-        std::vector<OrderId> to_cancel;
-
-        for (const auto& [price, orders_list] : book) {
-            for (const auto& order : orders_list) {
-                if (order->GetOrderType() != OrderType::GoodTillCancel) {
-                    to_cancel.push_back(order->GetOrderId());
-                }
-            }
-        }
-
-        for (OrderId id : to_cancel) {
-            CancelOrder(id);
-        }
-    };
-
-    cleanup_side(bids_);
-    cleanup_side(asks_);
-
     UpdateBestPrices();
     return trades;
 }
@@ -244,7 +226,7 @@ Trades Orderbook::AddOrder(OrderType orderType, OrderId orderId, Side side, Pric
         if(orderType == OrderType::FillOrKill && !CanFullyFill(side, price, quantity))
             return {};
     }
-    Order* order = orderpool.acquire();
+    OrderPointer order = orderpool.acquire();
     if(order == nullptr) return {};
 
     order->ResetOrder(orderType, orderId, side, price, quantity);
@@ -277,7 +259,13 @@ Trades Orderbook::AddOrder(OrderType orderType, OrderId orderId, Side side, Pric
         ev.side = (order->GetSide() == Side::Buy) ? 1 : 0;
         EmitEvent(ev);
     }
-    return MatchOrders();
+
+    Trades trades = MatchOrders();
+    if(orders_.contains(orderId) && order->GetOrderType() != OrderType::GoodTillCancel){
+        CancelOrder(orderId);
+    }
+
+    return trades;
 }
 
 Trades Orderbook::MatchOrder(OrderModify order)
