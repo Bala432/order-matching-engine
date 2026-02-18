@@ -19,7 +19,8 @@ struct BenchmarkConfig {
 };
 
 std::vector<BenchmarkConfig> scenarios = {
-    {100000, 60000}
+    {1000000, 750000},  // latency mode (750µs pacing)
+    {1000000, 0}        // throughput mode (no pacing)
 };
 
 
@@ -52,6 +53,11 @@ void pin_thread(std::thread& t, int core_id) {
 void run_benchmark(size_t scenario_ops, uint64_t scenario_interval_ns) {
     size_t OPS = scenario_ops;
     constexpr size_t QUEUE_SIZE = 1 << 16;
+
+    if (scenario_interval_ns > 0)
+        std::cout << "Mode: Latency (paced)\n";
+    else
+        std::cout << "Mode: Throughput (saturated)\n";
 
     Orderbook ob(OPS);
     SPSCQueue<FeedMessage> queue(QUEUE_SIZE);
@@ -142,7 +148,6 @@ void run_benchmark(size_t scenario_ops, uint64_t scenario_interval_ns) {
         for (size_t i = 0; i < OPS; ++i) {
             FeedMessage msg;
             double r = choice(rng);
-            next_send += interval_ns;
 
             // ---- Distribution ----
 
@@ -211,13 +216,18 @@ void run_benchmark(size_t scenario_ops, uint64_t scenario_interval_ns) {
             total_queue_depth += queue_depth;
             depth_samples++;
             max_queue_depth = std::max(max_queue_depth, queue_depth);
-            uint64_t now = now_ns();
-            if (now < next_send) {
-                while (now_ns() < next_send) {
-                    _mm_pause();
+            if (interval_ns > 0) {
+                next_send += interval_ns;
+                uint64_t now = now_ns();
+
+                if (now < next_send) {
+                    while (now_ns() < next_send) {
+                        _mm_pause();
+                    }
+                } else {
+                    // drift correction
+                    next_send = now;
                 }
-            } else {
-                next_send = now;
             }
         }
         done.store(true, std::memory_order_release);
@@ -282,6 +292,11 @@ void run_benchmark(size_t scenario_ops, uint64_t scenario_interval_ns) {
     std::cout << "E2E Latency p90: " << p90_e2e << " ns\n";
     std::cout << "E2E Latency p99: " << p99_e2e << " ns\n";
     std::cout << "E2E Latency p999: " << p999_e2e << " ns\n";
+
+    auto max_e2e = *std::max_element(stats.e2e_lat.begin(), stats.e2e_lat.end());
+    std::cout << "E2E Max Latency: " << max_e2e << " ns\n";
+    std::cout << "Final Orderbook Size: " << ob.Size() << "\n";
+
 }
 
 int main() {
